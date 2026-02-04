@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Registro - QOME</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body class="bg-light d-flex align-items-center justify-content-center" style="height: 100vh;">
+
+    <div class="card shadow p-4" style="max-width: 400px; width: 100%;">
+        <h2 class="text-center text-success fw-bold mb-4">🥦 QOME</h2>
+        <h4 class="text-center mb-4">Crear Cuenta</h4>
+        
+        <form method="post">
+            {% csrf_token %}
+            {{ form.as_p }}
+            
+            <button type="submit" class="btn btn-success w-100 btn-lg mt-3">Registrarse</button>
+        </form>
+        
+        <div class="text-center mt-3">
+            <p>¿Ya tienes cuenta? <a href="{% url 'login' %}" class="text-success fw-bold">Entra aquí</a></p>
+        </div>
+    </div>
+
+</body>
+</html>

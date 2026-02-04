@@ -1,0 +1,95 @@
+[
+  {
+    "titulo": "Tortilla de Patatas Clásica",
+    "instrucciones": "1. Pelar y cortar patatas y cebolla. 2. Pochar en sartén con aceite. 3. Mezclar con huevos y cuajar.",
+    "tiempo": 25,
+    "airfryer": false,
+    "microondas": false,
+    "horno": false,
+    "sarten": true,
+    "ingredientes": [
+      {"nombre": "Huevos L", "gramos": 250},
+      {"nombre": "Patata", "gramos": 500},
+      {"nombre": "Cebolla", "gramos": 100},
+      {"nombre": "Aceite de Oliva Virgen Extra", "gramos": 40},
+      {"nombre": "Sal", "gramos": 5}
+    ]
+  },
+  {
+    "titulo": "Ensalada César Low Cost",
+    "instrucciones": "1. Cortar lechuga. 2. Hacer pechuga a la plancha (sartén). 3. Tostar pan. 4. Mezclar.",
+    "tiempo": 10,
+    "airfryer": false,
+    "microondas": false,
+    "horno": false,
+    "sarten": true,
+    "ingredientes": [
+      {"nombre": "Lechuga Iceberg", "gramos": 200},
+      {"nombre": "Pechuga de Pollo", "gramos": 150},
+      {"nombre": "Pan Integral", "gramos": 40},
+      {"nombre": "Queso Fresco Batido", "gramos": 50},
+      {"nombre": "Sal", "gramos": 2}
+    ]
+  },
+  {
+    "titulo": "Bowl de Avena y Cacahuete",
+    "instrucciones": "1. Poner yogur en un bol. 2. Añadir avena, plátano y crema.",
+    "tiempo": 5,
+    "airfryer": false,
+    "microondas": false,
+    "horno": false,
+    "sarten": false,
+    "ingredientes": [
+      {"nombre": "Yogur Griego Natural", "gramos": 125},
+      {"nombre": "Avena en Copos", "gramos": 40},
+      {"nombre": "Plátano", "gramos": 100},
+      {"nombre": "Crema de Cacahuete", "gramos": 15}
+    ]
+  },
+  {
+    "titulo": "Salmón al Horno con Verduras",
+    "instrucciones": "1. Poner salmón en bandeja. 2. Verduras alrededor. 3. Hornear 15 min.",
+    "tiempo": 20,
+    "airfryer": false,
+    "microondas": false,
+    "horno": true,
+    "sarten": false,
+    "ingredientes": [
+      {"nombre": "Salmón Fresco", "gramos": 200},
+      {"nombre": "Brócoli", "gramos": 150},
+      {"nombre": "Zanahoria", "gramos": 100},
+      {"nombre": "Aceite de Oliva Virgen Extra", "gramos": 10},
+      {"nombre": "Limón", "gramos": 20}
+    ]
+  },
+  {
+    "titulo": "Pasta con Atún de Estudiante",
+    "instrucciones": "1. Cocer pasta en olla. 2. Mezclar con atún y tomate.",
+    "tiempo": 12,
+    "airfryer": false,
+    "microondas": true,
+    "horno": false,
+    "sarten": false,
+    "ingredientes": [
+      {"nombre": "Pasta Integral", "gramos": 100},
+      {"nombre": "Atún en Lata (Natural)", "gramos": 60},
+      {"nombre": "Tomate Frito", "gramos": 50}
+    ]
+  },
+  {
+    "titulo": "Wok de Tofu y Verduras",
+    "instrucciones": "1. Saltear tofu y verduras en sartén/wok. 2. Añadir soja.",
+    "tiempo": 15,
+    "airfryer": false,
+    "microondas": false,
+    "horno": false,
+    "sarten": true,
+    "ingredientes": [
+      {"nombre": "Tofu Firme", "gramos": 150},
+      {"nombre": "Pimiento Rojo", "gramos": 80},
+      {"nombre": "Calabacín", "gramos": 100},
+      {"nombre": "Salsa de Soja", "gramos": 15},
+      {"nombre": "Aceite de Oliva Virgen Extra", "gramos": 10}
+    ]
+  }
+]
