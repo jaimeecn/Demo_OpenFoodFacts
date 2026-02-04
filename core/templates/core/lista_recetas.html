@@ -4,36 +4,26 @@
 <div class="container py-4">
     <div class="row mb-4 align-items-center">
         <div class="col-md-8">
-            <h1 class="display-6">
-                {% if perfil %}
-                    Recetas para ti
-                    <small class="text-muted fs-6 d-block">Optimizadas para: 
-                        {% for s in perfil.supermercados_seleccionados.all %}
-                            <span class="badge" style="background-color: {{ s.color_brand }}">{{ s.nombre }}</span>
-                        {% empty %}
-                            <span class="badge bg-secondary">Todos los mercados</span>
-                        {% endfor %}
-                    </small>
-                {% else %}
-                    Catálogo de Recetas
-                {% endif %}
+            <h1 class="display-6 fw-bold text-dark">
+                {% if perfil %}Recetas para ti{% else %}Catálogo{% endif %}
             </h1>
         </div>
         <div class="col-md-4 text-end">
-            <form method="get" class="d-flex">
-                <input type="text" name="q" class="form-control me-2" placeholder="Buscar ingrediente..." value="{{ request.GET.q }}">
-                <button type="submit" class="btn btn-outline-primary">🔍</button>
+            <form method="get" class="d-flex gap-1">
+                <input type="text" name="q" class="form-control" placeholder="Buscar..." value="{{ request.GET.q }}">
+                <button class="btn btn-outline-primary">🔍</button>
             </form>
         </div>
     </div>
 
     {% if perfil %}
-    <div class="card mb-4 border-0 shadow-sm bg-light">
+    <div class="card mb-4 border-0 shadow-sm bg-success text-white">
         <div class="card-body py-2">
-            <div class="row text-center text-muted small">
-                <div class="col">Meta Calórica: <strong>{{ metas.calorias }}</strong> kcal</div>
-                <div class="col">Proteína: <strong>{{ metas.proteinas }}</strong>g</div>
-                <div class="col">Presupuesto: <strong>{{ perfil.presupuesto_semanal }}€</strong></div>
+            <div class="row text-center small">
+                <div class="col">🔥 Meta: <strong>{{ metas.calorias }}</strong> kcal</div>
+                <div class="col">🥩 Prot: <strong>{{ metas.proteinas }}</strong>g</div>
+                <div class="col">🥑 Grasas: <strong>{{ metas.grasas }}</strong>g</div>
+                <div class="col">🥖 Carbs: <strong>{{ metas.hidratos }}</strong>g</div>
             </div>
         </div>
     </div>
@@ -42,41 +32,44 @@
     <div class="row row-cols-1 row-cols-md-3 g-4">
         {% for receta in recetas %}
         <div class="col">
-            <div class="card h-100 shadow-sm {% if not receta.precio_usuario %}border-warning{% endif %}">
-                <div class="card-img-top bg-secondary text-white d-flex align-items-center justify-content-center" style="height: 180px;">
-                    <span class="h3">{{ receta.titulo|slice:":2" }}</span>
+            <div class="card h-100 shadow-sm border-0 hover-card">
+                <div class="card-img-top bg-secondary text-white d-flex align-items-center justify-content-center" style="height: 160px; background: linear-gradient(45deg, #6a11cb 0%, #2575fc 100%);">
+                    <span class="h1">🍽️</span>
                 </div>
                 
                 <div class="card-body">
-                    <h5 class="card-title text-truncate">{{ receta.titulo }}</h5>
+                    <h5 class="card-title text-truncate fw-bold">{{ receta.titulo }}</h5>
                     
                     <div class="mb-2">
-                        <span class="badge bg-info text-dark">⏱ {{ receta.tiempo_preparacion }} min</span>
-                        {% if receta.es_apta_tupper %}<span class="badge bg-success">Tupper</span>{% endif %}
+                        <span class="badge bg-light text-dark border">⏱ {{ receta.tiempo_preparacion }} min</span>
+                        {% if receta.es_apta_horno %}<span class="badge bg-warning text-dark">Horno</span>{% endif %}
+                        {% if receta.es_apta_sarten %}<span class="badge bg-secondary">Sartén</span>{% endif %}
+                        {% if receta.es_apta_airfryer %}<span class="badge bg-info text-dark">Airfryer</span>{% endif %}
                     </div>
 
-                    <p class="card-text small text-muted mb-1">
-                        🔥 {{ receta.calorias }} kcal | 🥩 {{ receta.proteinas }}g prot
-                    </p>
+                    <div class="small text-muted mb-3">
+                        <div class="d-flex justify-content-between">
+                            <span>🔥 {{ receta.calorias }} kcal</span>
+                            <span class="text-dark fw-bold">{{ receta.proteinas }}g Prot</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>🥑 {{ receta.grasas }}g Grasas</span>
+                            <span>🥖 {{ receta.hidratos }}g Carbs</span>
+                        </div>
+                    </div>
 
                     <div class="mt-3 pt-3 border-top d-flex justify-content-between align-items-center">
                         <div>
                             {% if receta.precio_usuario %}
-                                <span class="h4 text-primary mb-0">{{ receta.precio_usuario|floatformat:2 }}€</span>
-                                <small class="text-muted d-block" style="font-size: 0.7rem;">en tus supers</small>
+                                <span class="h4 text-success mb-0 fw-bold">{{ receta.precio_usuario|floatformat:2 }}€</span>
                             {% else %}
-                                <span class="text-danger fw-bold">No disponible</span>
-                                <small class="text-muted d-block" style="font-size: 0.7rem;">faltan ingredientes</small>
+                                <span class="text-muted small">No disponible en tu súper</span>
                             {% endif %}
                         </div>
-                        <a href="{% url 'detalle_receta' receta.id %}" class="btn btn-sm btn-outline-primary">Ver detalle</a>
+                        <a href="{% url 'detalle_receta' receta.id %}" class="btn btn-sm btn-primary rounded-pill px-3">Ver receta</a>
                     </div>
                 </div>
             </div>
-        </div>
-        {% empty %}
-        <div class="col-12 text-center py-5">
-            <p class="text-muted">No se encontraron recetas con tus filtros.</p>
         </div>
         {% endfor %}
     </div>

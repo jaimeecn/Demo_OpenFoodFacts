@@ -4,20 +4,46 @@
 <div class="container py-5">
     <div class="row">
         <div class="col-md-8">
-            <h1 class="mb-3">{{ receta.titulo }}</h1>
+            <h1 class="mb-3 fw-bold">{{ receta.titulo }}</h1>
             
-            <div class="d-flex gap-3 mb-4">
-                <span class="badge bg-secondary p-2">⏳ {{ receta.tiempo_preparacion }} min</span>
-                <span class="badge bg-danger p-2">🔥 {{ receta.calorias }} kcal</span>
-                <span class="badge bg-primary p-2">🥩 {{ receta.proteinas }}g Prot</span>
+            <div class="d-flex gap-2 mb-4 flex-wrap">
+                <span class="badge bg-dark p-2">⏱ {{ receta.tiempo_preparacion }} min</span>
+                {% if receta.es_apta_horno %}<span class="badge bg-warning text-dark p-2">Horno</span>{% endif %}
+                {% if receta.es_apta_sarten %}<span class="badge bg-secondary p-2">Sartén</span>{% endif %}
+                {% if receta.es_apta_airfryer %}<span class="badge bg-info text-dark p-2">Airfryer</span>{% endif %}
+                {% if receta.es_apta_tupper %}<span class="badge bg-success p-2">Apta Tupper</span>{% endif %}
             </div>
 
-            <h4>Ingredientes</h4>
-            <ul class="list-group mb-4">
+            <div class="card mb-4 bg-light border-0">
+                <div class="card-body">
+                    <h5 class="card-title text-muted mb-3">Información Nutricional (por ración)</h5>
+                    <div class="row text-center">
+                        <div class="col">
+                            <div class="h3 mb-0">{{ receta.calorias }}</div>
+                            <small class="text-muted">Kcal</small>
+                        </div>
+                        <div class="col">
+                            <div class="h3 mb-0 text-primary">{{ receta.proteinas }}g</div>
+                            <small class="text-muted">Proteínas</small>
+                        </div>
+                        <div class="col">
+                            <div class="h3 mb-0 text-warning">{{ receta.grasas }}g</div>
+                            <small class="text-muted">Grasas</small>
+                        </div>
+                        <div class="col">
+                            <div class="h3 mb-0 text-success">{{ receta.hidratos }}g</div>
+                            <small class="text-muted">Hidratos</small>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <h4 class="mb-3">Ingredientes</h4>
+            <ul class="list-group list-group-flush mb-4">
                 {% for ing in receta.ingredientes.all %}
-                <li class="list-group-item d-flex justify-content-between">
+                <li class="list-group-item d-flex justify-content-between align-items-center px-0">
                     <span>{{ ing.ingrediente_base.nombre }}</span>
-                    <strong>{{ ing.cantidad_gramos }}g</strong>
+                    <span class="badge bg-light text-dark border">{{ ing.cantidad_gramos }}g</span>
                 </li>
                 {% endfor %}
             </ul>
@@ -25,8 +51,8 @@
 
         <div class="col-md-4">
             <div class="card shadow-sm border-primary mb-3">
-                <div class="card-header bg-primary text-white">
-                    <h5 class="mb-0">💰 Comparador de Costes</h5>
+                <div class="card-header bg-primary text-white fw-bold">
+                    💰 Comparador de Costes
                 </div>
                 <ul class="list-group list-group-flush">
                     {% for coste in costes %}
@@ -38,13 +64,10 @@
                     </li>
                     {% empty %}
                     <li class="list-group-item text-muted">
-                        No hay precios disponibles para esta receta.
+                        Faltan ingredientes en los supermercados registrados.
                     </li>
                     {% endfor %}
                 </ul>
-                <div class="card-footer text-muted small">
-                    * Precio por ración calculado con los precios de hoy.
-                </div>
             </div>
         </div>
     </div>

@@ -12,11 +12,8 @@ from .models import (
     ComidaPlanificada, ProductoReal, CostePorSupermercado
 )
 
-# --- MOTOR TETRIS (Integrado en la Web) ---
+# --- MOTOR TETRIS V9 (Con Lógica Calórica) ---
 def generar_plan_motor(user):
-    """
-    Ejecuta la lógica del Tetris para un usuario específico y guarda el plan en BD.
-    """
     try:
         perfil = user.perfil
     except:
@@ -27,12 +24,20 @@ def generar_plan_motor(user):
     if not mis_supers.exists():
         mis_supers = Supermercado.objects.all()
 
-    # 2. Limpieza de planes futuros o actuales
-    inicio_semana = date.today() 
+    # 2. Estrategia Nutricional (NUEVO)
+    # Si el usuario es un "tanque" (necesita > 2500 kcal), priorizamos recetas densas.
+    # Si quiere definir (< 1800), priorizamos ligeras.
+    meta_calorias = perfil.gasto_energetico_diario
+    orden_prioridad = 'precio_minimo_mio' # Por defecto: Lo más barato
     
-    # Borrar planes anteriores
+    if meta_calorias > 2500:
+        orden_prioridad = '-calorias' # Priorizar las más calóricas primero
+    elif meta_calorias < 1800:
+        orden_prioridad = 'calorias' # Priorizar las más ligeras
+
+    # 3. Limpieza
+    inicio_semana = date.today()
     PlanSemanal.objects.filter(usuario=user).delete()
-    
     plan = PlanSemanal.objects.create(usuario=user, fecha_inicio=inicio_semana)
     
     despensa = {} 
@@ -43,27 +48,30 @@ def generar_plan_motor(user):
     dias = range(7) 
     momentos = ['COMIDA', 'CENA']
 
-    # 3. Generación
+    # 4. Generación
     for dia in dias:
         for momento in momentos:
-            candidatas = Receta.objects.filter(
+            # Filtramos recetas posibles en SUS supermercados
+            base_query = Receta.objects.filter(
                 costes_por_supermercado__supermercado__in=mis_supers,
                 costes_por_supermercado__es_posible=True
             ).annotate(
                 precio_minimo_mio=Min('costes_por_supermercado__coste')
-            ).order_by('precio_minimo_mio')
+            )
+
+            # Ordenamos según la estrategia definida arriba
+            candidatas = base_query.order_by(orden_prioridad, 'precio_minimo_mio')
 
             # Filtro Anti-Repetición
             if memoria_reciente:
                 candidatas = candidatas.exclude(titulo__in=memoria_reciente)
 
-            pool = candidatas[:10]
-            if not pool.exists():
-                continue 
+            # Selección: Cogemos del Top 5 que cumplan el criterio
+            pool = candidatas[:5]
+            if not pool.exists(): continue 
                 
             receta_elegida = random.choice(pool)
             
-            # Guardar en memoria
             memoria_reciente.append(receta_elegida.titulo)
             if len(memoria_reciente) > 4: memoria_reciente.pop(0)
             
@@ -87,7 +95,6 @@ def generar_plan_motor(user):
                         peso_pack = prod.peso_gramos
                         cantidad_a_comprar = 1
                         deficit = necesario - despensa[nombre_base]
-                        
                         while (cantidad_a_comprar * peso_pack) < deficit:
                             cantidad_a_comprar += 1
                         
@@ -108,13 +115,9 @@ def generar_plan_motor(user):
                 despensa[nombre_base] -= necesario
 
             ComidaPlanificada.objects.create(
-                plan=plan, 
-                receta=receta_elegida, 
-                dia_semana=dia, 
-                momento=momento
+                plan=plan, receta=receta_elegida, dia_semana=dia, momento=momento
             )
 
-    # CORRECCIÓN: Usar 'lista_compra_snapshot'
     plan.lista_compra_snapshot = json.dumps(cesta_compra_real)
     plan.coste_total_estimado = coste_total_plan
     plan.save()
@@ -134,8 +137,7 @@ def lista_recetas(request):
     recetas = Receta.objects.all()
     perfil = None
     metas = None
-    limite_coste = 0
-
+    
     if request.user.is_authenticated:
         try:
             perfil = PerfilUsuario.objects.get(usuario=request.user)
@@ -157,23 +159,19 @@ def lista_recetas(request):
                 'grasas': perfil.objetivo_grasas,
                 'hidratos': perfil.objetivo_hidratos,
             }
-            if perfil.presupuesto_semanal > 0:
-                limite_coste = perfil.presupuesto_semanal / 14
-
-        except PerfilUsuario.DoesNotExist:
-            pass
+        except PerfilUsuario.DoesNotExist: pass
     else:
         recetas = recetas.annotate(precio_usuario=Min('costes_por_supermercado__coste'))
 
+    # Filtros
     query = request.GET.get('q')
     if query: recetas = recetas.filter(titulo__icontains=query)
-    
     if request.GET.get('horno'): recetas = recetas.filter(es_apta_horno=True)
     if request.GET.get('sarten'): recetas = recetas.filter(es_apta_sarten=True)
     if request.GET.get('tupper'): recetas = recetas.filter(es_apta_tupper=True)
 
     return render(request, 'core/lista_recetas.html', {
-        'recetas': recetas, 'perfil': perfil, 'metas': metas, 'limite_coste': limite_coste
+        'recetas': recetas, 'perfil': perfil, 'metas': metas
     })
 
 def detalle_receta(request, receta_id):
@@ -217,10 +215,8 @@ def perfil(request):
         perfil_usuario.supermercados_seleccionados.set(supers_ids)
         
         perfil_usuario.save()
-        
         generar_plan_motor(request.user)
-        messages.success(request, "Perfil guardado y Plan regenerado con tus nuevos datos.")
-        
+        messages.success(request, "Perfil guardado y Plan regenerado.")
         return redirect('plan_semanal')
 
     return render(request, 'core/perfil.html', {
@@ -241,6 +237,9 @@ def ver_plan_semanal(request):
     dias_semana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
     calendario = {i: {'nombre': dias_semana[i], 'comida': None, 'cena': None} for i in range(7)}
     lista_compra_visual = {} 
+    
+    # NUEVO: Diccionario para los subtotales
+    subtotales_super = {} 
 
     if plan:
         comidas = plan.comidas.all().select_related('receta')
@@ -250,21 +249,28 @@ def ver_plan_semanal(request):
             elif comida.momento == 'CENA':
                 calendario[comida.dia_semana]['cena'] = comida.receta
         
-        # CORRECCIÓN: Usar 'lista_compra_snapshot'
         if plan.lista_compra_snapshot:
             try:
                 raw_lista = json.loads(plan.lista_compra_snapshot)
                 lista_agrupada = {}
                 for nombre_prod, datos in raw_lista.items():
                     super_nombre = datos.get('super', 'Otros')
-                    if super_nombre not in lista_agrupada: lista_agrupada[super_nombre] = []
+                    if super_nombre not in lista_agrupada: 
+                        lista_agrupada[super_nombre] = []
+                        subtotales_super[super_nombre] = 0.0 # Init subtotal
+                    
                     datos['nombre'] = nombre_prod
                     lista_agrupada[super_nombre].append(datos)
+                    
+                    # Sumar al total del súper
+                    subtotales_super[super_nombre] += datos['total']
+                
                 lista_compra_visual = lista_agrupada
             except: pass
 
     return render(request, 'core/plan_semanal.html', {
         'calendario': calendario,
         'lista_compra': lista_compra_visual,
-        'plan': plan
+        'plan': plan,
+        'subtotales': subtotales_super # Pasamos los totales
     })
