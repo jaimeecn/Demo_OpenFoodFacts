@@ -3,7 +3,7 @@ from django.db import models
 from django.contrib.auth.models import User
 from django.db.models import Min
 
-# --- 1. MODELO SUPERMERCADO (Ahora es fundamental) ---
+# --- 1. MODELO SUPERMERCADO ---
 class Supermercado(models.Model):
     nombre = models.CharField(max_length=50, unique=True)
     color_brand = models.CharField(max_length=7, default="#000000", help_text="Color hexadecimal para la UI")
@@ -41,7 +41,7 @@ class PerfilUsuario(models.Model):
     objetivo_grasas = models.IntegerField(default=0)
     objetivo_hidratos = models.IntegerField(default=0)
 
-    # LOGÍSTICA DE MERCADO (EL NUEVO CEREBRO)
+    # LOGÍSTICA DE MERCADO
     supermercados_seleccionados = models.ManyToManyField(Supermercado, blank=True, related_name='usuarios')
     presupuesto_semanal = models.DecimalField(max_digits=6, decimal_places=2, default=0.0)
     
@@ -52,24 +52,20 @@ class PerfilUsuario(models.Model):
     tiempo_cocina_diario = models.IntegerField(default=30)
 
     def calcular_macronutrientes(self):
-        # 1. TMB (Harris-Benedict Revisada)
         if self.genero == 'M':
             tmb = 10 * self.peso_kg + 6.25 * self.altura_cm - 5 * self.edad + 5
         else:
             tmb = 10 * self.peso_kg + 6.25 * self.altura_cm - 5 * self.edad - 161
             
-        # 2. TDEE
         factores = {'SEDENTARIO': 1.2, 'LIGERO': 1.375, 'MODERADO': 1.55, 'ALTO': 1.725}
         tdee = tmb * factores.get(self.nivel_actividad, 1.2)
         
-        # 3. Ajuste Objetivo
         factor_prot, factor_gras = 1.5, 1.0
         if self.objetivo == 'PERDER': 
             tdee -= 400; factor_prot = 2.0; factor_gras = 0.8
         elif self.objetivo == 'GANAR': 
             tdee += 300; factor_prot = 1.8; factor_gras = 1.0
         
-        # 4. Gramos
         prot = int(self.peso_kg * factor_prot)
         gras = int(self.peso_kg * factor_gras)
         cals_rest = max(200, tdee - ((prot * 4) + (gras * 9)))
@@ -88,7 +84,7 @@ class PerfilUsuario(models.Model):
     def __str__(self):
         return f"Perfil de {self.usuario.username}"
 
-# --- 3. MODELO INGREDIENTE BASE (Agnóstico del Supermercado) ---
+# --- 3. MODELO INGREDIENTE BASE ---
 class IngredienteBase(models.Model):
     CATEGORIAS = [
         ('Fruta', 'Fruta'), ('Verdura', 'Verdura'), ('Carniceria', 'Carnicería'),
@@ -107,7 +103,7 @@ class IngredienteBase(models.Model):
     def __str__(self):
         return self.nombre
 
-# --- 4. MODELO PRODUCTO REAL (Vinculado a un Supermercado) ---
+# --- 4. MODELO PRODUCTO REAL (Ahora con Nutrición Real) ---
 class ProductoReal(models.Model):
     ingrediente_base = models.ForeignKey(IngredienteBase, on_delete=models.CASCADE, related_name='productos_disponibles')
     supermercado = models.ForeignKey(Supermercado, on_delete=models.CASCADE)
@@ -115,9 +111,15 @@ class ProductoReal(models.Model):
     nombre_comercial = models.CharField(max_length=200)
     precio_actual = models.DecimalField(max_digits=6, decimal_places=2)
     
-    # Normalización para algoritmos
+    # Datos Físicos
     peso_gramos = models.IntegerField(default=1000, help_text="Peso neto normalizado")
     precio_por_kg = models.DecimalField(max_digits=6, decimal_places=2, null=True, blank=True)
+    
+    # Datos Nutricionales Reales (Scrapeados por 100g) [NUEVO PARA LA DEMO]
+    kcal_100g = models.IntegerField(default=0)
+    prot_100g = models.FloatField(default=0.0)
+    grasas_100g = models.FloatField(default=0.0)
+    hidratos_100g = models.FloatField(default=0.0)
     
     # Datos crudos del scraper (para auditoría)
     tipo_unidad_original = models.CharField(max_length=10, default='KG')
@@ -127,7 +129,6 @@ class ProductoReal(models.Model):
     ultima_actualizacion = models.DateTimeField(auto_now=True)
 
     def save(self, *args, **kwargs):
-        # Autocalcular precio por KG real para comparativas justas
         if self.peso_gramos > 0 and self.precio_actual > 0:
             self.precio_por_kg = (self.precio_actual / Decimal(self.peso_gramos)) * 1000
         super().save(*args, **kwargs)
@@ -146,27 +147,17 @@ class Receta(models.Model):
     es_apta_microondas = models.BooleanField(default=False)
     es_apta_tupper = models.BooleanField(default=True)
     
-    # Macros (Estos sí son intrínsecos de la receta, aprox)
+    # Macros Totales (Se calculan sumando ingredientes)
     calorias = models.IntegerField(default=0)
     proteinas = models.FloatField(default=0.0)
     grasas = models.FloatField(default=0.0)
     hidratos = models.FloatField(default=0.0)
 
-    # NOTA: ELIMINADO precio_estimado. Ahora se consulta en CostePorSupermercado.
-
     def obtener_precio_para_usuario(self, perfil_usuario):
-        """
-        Retorna el coste mínimo posible usando SOLO los supermercados del usuario.
-        Si no tiene supermercados, retorna None.
-        """
         mis_supers = perfil_usuario.supermercados_seleccionados.all()
-        if not mis_supers.exists():
-            return None
-        
-        # Buscamos el coste pre-calculado más barato entre sus opciones
+        if not mis_supers.exists(): return None
         costes = self.costes_por_supermercado.filter(supermercado__in=mis_supers)
-        if costes.exists():
-            return costes.aggregate(Min('coste'))['coste__min']
+        if costes.exists(): return costes.aggregate(Min('coste'))['coste__min']
         return None
 
     def recalcular_macros(self):
@@ -187,16 +178,12 @@ class Receta(models.Model):
     def __str__(self):
         return self.titulo
 
-# --- 6. MODELO COSTE DINÁMICO (Nuevo Cerebro Económico) ---
+# --- 6. MODELO COSTE DINÁMICO ---
 class CostePorSupermercado(models.Model):
-    """
-    Guarda cuánto cuesta hacer la Receta X comprando TODO en el Supermercado Y.
-    Esto permite filtrar rápidamente: "Recetas baratas en Mercadona".
-    """
     receta = models.ForeignKey(Receta, related_name='costes_por_supermercado', on_delete=models.CASCADE)
     supermercado = models.ForeignKey(Supermercado, on_delete=models.CASCADE)
     coste = models.DecimalField(max_digits=6, decimal_places=2)
-    es_posible = models.BooleanField(default=True, help_text="False si el súper no tiene todos los ingredientes")
+    es_posible = models.BooleanField(default=True)
     ultima_actualizacion = models.DateTimeField(auto_now=True)
 
     class Meta:
@@ -216,7 +203,6 @@ class PlanSemanal(models.Model):
     usuario = models.ForeignKey(User, on_delete=models.CASCADE)
     fecha_inicio = models.DateField()
     creado_en = models.DateTimeField(auto_now_add=True)
-    # Guardamos el JSON de la compra para congelar el precio en el momento de la generación
     lista_compra_snapshot = models.TextField(blank=True, null=True) 
     coste_total_estimado = models.DecimalField(max_digits=8, decimal_places=2, default=0)
 

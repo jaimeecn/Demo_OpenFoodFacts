@@ -11,29 +11,20 @@ django.setup()
 from core.models import Receta, IngredienteBase, RecetaIngrediente
 
 def sembrar_recetas_pro():
-    print("👨‍🍳 Cocinando Recetario Avanzado (V4)...")
+    print("👨‍🍳 Cocinando Recetario Avanzado (V4 con Utensilios Lógicos)...")
 
-    # 1. Limpieza de recetas antiguas (Opcional, comenta si quieres acumular)
     Receta.objects.all().delete()
 
-    # 2. Función Helper para buscar ingredientes
     def get_ing(nombre_parcial):
-        # Busca algo que contenga el nombre (ej: "Tomate" encuentra "Tomate Frito" o "Tomate Natural")
-        # Priorizamos match exacto, luego 'contains'
         exacto = IngredienteBase.objects.filter(nombre__iexact=nombre_parcial).first()
         if exacto: return exacto
-        
         parcial = IngredienteBase.objects.filter(nombre__icontains=nombre_parcial).first()
         if parcial: return parcial
-        
         print(f"   ⚠️ Ingrediente no encontrado: '{nombre_parcial}'. Creando dummy...")
         return IngredienteBase.objects.create(nombre=nombre_parcial, categoria='Otros')
 
-    # 3. EL RECETARIO PRO
-    # Estructura: (Titulo, Tiempo, [(Ingrediente, Gramos), ...])
-    
     recetas_data = [
-        # --- LEGUMBRES Y GUISOS (Alta densidad nutricional) ---
+        # --- LEGUMBRES Y GUISOS ---
         ("Lentejas Estofadas con Verduras", 40, [
             ('Lentejas Bote', 200), ('Zanahoria', 50), ('Patata', 100), 
             ('Cebolla', 30), ('Ajo', 5), ('Pimentón', 2), ('Aceite Oliva', 10)
@@ -47,7 +38,7 @@ def sembrar_recetas_pro():
             ('Cebolla', 30), ('Aceite Oliva', 10)
         ]),
 
-        # --- PASTAS Y ARROCES (Carbohidratos complejos) ---
+        # --- PASTAS Y ARROCES ---
         ("Espaguetis Boloñesa Real", 30, [
             ('Espaguetis', 100), ('Carne Picada Vacuno', 100), ('Tomate Frito', 50), 
             ('Cebolla', 30), ('Orégano', 2), ('Queso Rallado', 15)
@@ -57,11 +48,11 @@ def sembrar_recetas_pro():
             ('Cebolla', 20), ('Orégano', 1)
         ]),
         ("Arroz Tres Delicias Casero", 25, [
-            ('Arroz', 80), ('Huevos', 60), ('Guisantes', 30), # Si no hay guisantes, creará dummy
+            ('Arroz', 80), ('Huevos', 60), ('Guisantes', 30), 
             ('Jamón York', 30), ('Zanahoria', 20), ('Aceite Oliva', 10), ('Sal', 2)
         ]),
         ("Risotto de Champiñones (Falso)", 35, [
-            ('Arroz', 100), ('Champiñones', 100), ('Leche Entera', 50), # Para cremosidad
+            ('Arroz', 100), ('Champiñones', 100), ('Leche Entera', 50), 
             ('Cebolla', 40), ('Queso Rallado', 20), ('Mantequilla', 10)
         ]),
 
@@ -79,7 +70,7 @@ def sembrar_recetas_pro():
             ('Cebolla', 50), ('Aceite Oliva', 15), ('Sal', 2)
         ]),
 
-        # --- PESCADOS (Omega 3) ---
+        # --- PESCADOS ---
         ("Salmón a la Plancha con Verduras", 20, [
             ('Salmón', 150), ('Calabacín', 100), ('Berenjena', 100), 
             ('Aceite Oliva', 10), ('Sal', 2)
@@ -95,11 +86,11 @@ def sembrar_recetas_pro():
 
         # --- CENAS LIGERAS ---
         ("Tortilla Francesa con Atún", 10, [
-            ('Huevos', 120), ('Atún Lata', 60), ('Lechuga', 100), # Acompañamiento
+            ('Huevos', 120), ('Atún Lata', 60), ('Lechuga', 100), 
             ('Aceite Oliva', 10), ('Sal', 1)
         ]),
         ("Ensalada César (Versión Qome)", 15, [
-            ('Lechuga', 150), ('Pechuga de Pollo', 100), ('Pan Molde', 30), # Picatostes
+            ('Lechuga', 150), ('Pechuga de Pollo', 100), ('Pan Molde', 30), 
             ('Queso Rallado', 20), ('Mayonesa', 15), ('Aceite Oliva', 5)
         ]),
         ("Crema de Calabacín y Queso", 30, [
@@ -114,14 +105,20 @@ def sembrar_recetas_pro():
 
     count = 0
     for titulo, tiempo, ingredientes in recetas_data:
-        # Crear receta
+        # LÓGICA DE UTENSILIOS (Ya no es random)
+        es_horno = "Horno" in titulo or "Asado" in titulo or "Pizza" in titulo or "Pastel" in titulo
+        es_sarten = "Sartén" in titulo or "Plancha" in titulo or "Tortilla" in titulo or "Revuelto" in titulo or "Hamburguesa" in titulo or "Salteado" in titulo
+        es_tupper = "Lentejas" in titulo or "Garbanzos" in titulo or "Arroz" in titulo or "Pasta" in titulo or "Ensalada" in titulo or "Macarrones" in titulo or "Espaguetis" in titulo or "Crema" in titulo
+
         receta = Receta.objects.create(
             titulo=titulo,
             tiempo_preparacion=tiempo,
-            # Etiquetas aleatorias para simular variedad técnica
-            es_apta_tupper=True,
-            es_apta_microondas=(random.random() > 0.5),
-            es_apta_airfryer=(random.random() > 0.7)
+            es_apta_horno=es_horno,
+            es_apta_sarten=es_sarten,
+            es_apta_tupper=es_tupper,
+            # Asumimos que casi todo lo de horno o sartén se puede adaptar a airfryer hoy día
+            es_apta_airfryer=(es_horno or es_sarten),
+            es_apta_microondas=(es_tupper)
         )
 
         for nombre_ing, gramos in ingredientes:
