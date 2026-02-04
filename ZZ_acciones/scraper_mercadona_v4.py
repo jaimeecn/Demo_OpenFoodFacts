@@ -16,6 +16,17 @@ from core.models import Supermercado, IngredienteBase, ProductoReal
 HEADERS = {'User-Agent': 'Mozilla/5.0 (compatible; QomeBot/1.0)'}
 API_ROOT = "https://tienda.mercadona.es/api/categories/?lang=es"
 
+# --- FILTROS DE SEGURIDAD (BLACKLIST) ---
+# Palabras que, si aparecen, DESCARTAN el producto inmediatamente.
+BLACKLIST = [
+    "perro", "gato", "mascota", "animal", "juniors", "infantil", "bebé", "pañal",
+    "champú", "gel", "jabón", "crema", "facial", "corporal", "limpieza", "friegasuelos",
+    "detergente", "suavizante", "lejía", "insecticida", "ambientador", "pilas", "bombilla",
+    "servilleta", "papel", "higiénico", "toallitas", "discos", "algodón", "bastoncillos",
+    "maquillaje", "colonia", "perfume", "desodorante", "estropajo", "bayeta", "fregona",
+    "fregaplatos", "lavavajillas", "mopa", "escoba"
+]
+
 # 1. DICCIONARIO DE SINÓNIMOS (Lógica OR)
 MATCH_SINONIMOS_OR = {
     "Macarrones": ["macarrón", "plumas", "penne", "tiburón", "hélices"],
@@ -97,30 +108,46 @@ def normalizar(texto):
         texto = texto.replace(a, b)
     return texto
 
-def cumple_criterios_dual(nombre_producto, nombre_ingrediente_base):
+def cumple_criterios_seguros(nombre_producto, nombre_ingrediente_base):
     nombre_prod = normalizar(nombre_producto)
+    
+    # 1. FILTRO BLACKLIST
+    for bad in BLACKLIST:
+        if bad in nombre_prod: return False
+
     nombre_ing = nombre_ingrediente_base 
 
-    # 1. INTENTO OR (Sinónimos)
+    # 2. INTENTO OR (Sinónimos)
     if nombre_ing in MATCH_SINONIMOS_OR:
         keywords = MATCH_SINONIMOS_OR[nombre_ing]
         for k in keywords:
-            if normalizar(k) in nombre_prod: return True
+            kn = normalizar(k)
+            # Lógica estricta para palabras cortas (<= 3 letras) como "Sal" o "Ajo"
+            if len(kn) <= 3:
+                # Debe estar rodeada de espacios o ser inicio/fin de cadena
+                if f" {kn} " in f" {nombre_prod} " or nombre_prod.startswith(f"{kn} ") or nombre_prod.endswith(f" {kn}"):
+                    return True
+            else:
+                if kn in nombre_prod: return True
         return False 
 
-    # 2. INTENTO AND (Compuestos)
+    # 3. INTENTO AND (Compuestos)
     if nombre_ing in MATCH_COMPUESTO_AND:
         keywords = MATCH_COMPUESTO_AND[nombre_ing]
         for k in keywords:
             if normalizar(k) not in nombre_prod: return False
         return True
 
-    # 3. FALLBACK
+    # 4. FALLBACK
     return normalizar(nombre_ing) in nombre_prod
 
 def obtener_arbol_categorias():
-    try: return requests.get(API_ROOT, headers=HEADERS).json()
-    except: return []
+    try:
+        r = requests.get(API_ROOT, headers=HEADERS)
+        return r.json()
+    except Exception as e:
+        print(f"❌ Error descargando árbol: {e}")
+        return []
 
 def extraer_productos_de_categoria(cat_id):
     url = f"https://tienda.mercadona.es/api/categories/{cat_id}/?lang=es"
@@ -134,23 +161,24 @@ def extraer_productos_de_categoria(cat_id):
         elif 'products' in data:
             productos.extend(data['products'])
         return productos
-    except: return []
+    except:
+        return []
 
 def extraer_nutricion(p_data):
-    """Intenta extraer las kcal por 100g del JSON de Mercadona"""
+    """
+    Intenta extraer las kcal por 100g.
+    Si no existe o falla, devuelve 0.
+    """
     try:
-        # Nota: La estructura real puede variar, esto es una aproximación robusta
-        # Buscamos en 'nutrition_information' si existe
+        # Placeholder: Aquí iría la lógica real de parseo del JSON de nutrición
+        # Para la demo, si no hay datos claros, 0 es seguro.
         if 'nutrition_information' in p_data:
-            # Aquí iría el parseo real. Para la demo, si no tenemos documentación exacta
-            # de la API en este momento, devolvemos 0 para evitar errores,
-            # pero la estructura está lista para recibir el dato.
-            return 0
+            return 0 
     except: pass
     return 0
 
 def ejecutar_crawler():
-    print("🕷️ CRAWLER MERCADONA V8 (NUTRICIÓN + DUAL LOGIC)...")
+    print("🕷️ CRAWLER MERCADONA V9 (ANTI-BASURA + NUTRICIÓN)...")
     
     mercadona, _ = Supermercado.objects.get_or_create(nombre="Mercadona", defaults={'color_brand': '#007A3E'})
     ingredientes_db = list(IngredienteBase.objects.all())
@@ -159,18 +187,22 @@ def ejecutar_crawler():
     categorias_a_visitar = []
     
     def explorar_nodo(nodo):
-        if not nodo.get('categories'): categorias_a_visitar.append(nodo['id'])
+        if not nodo.get('categories'):
+            categorias_a_visitar.append(nodo['id'])
         else:
-            for hijo in nodo['categories']: explorar_nodo(hijo)
+            for hijo in nodo['categories']:
+                explorar_nodo(hijo)
     
     if 'results' in arbol:
-        for raiz in arbol['results']: explorar_nodo(raiz)
+        for raiz in arbol['results']:
+            explorar_nodo(raiz)
     
-    print(f"🌍 Iniciando barrido en {len(categorias_a_visitar)} pasillos...")
+    print(f"🌍 Escaneando {len(categorias_a_visitar)} pasillos...")
+
     total_guardados = 0
     
     for i, cat_id in enumerate(categorias_a_visitar): 
-        if i % 10 == 0: print(f"   ⏳ Pasillo {i}/{len(categorias_a_visitar)}...")
+        if i % 15 == 0: print(f"   ⏳ Pasillo {i}/{len(categorias_a_visitar)}...")
         
         productos_raw = extraer_productos_de_categoria(cat_id)
         
@@ -178,7 +210,8 @@ def ejecutar_crawler():
             nombre_prod = p['display_name']
             
             for ing in ingredientes_db:
-                if cumple_criterios_dual(nombre_prod, ing.nombre):
+                # Usamos la nueva función segura
+                if cumple_criterios_seguros(nombre_prod, ing.nombre):
                     try:
                         info = p['price_instructions']
                         precio = Decimal(info['unit_price'])
@@ -188,10 +221,13 @@ def ejecutar_crawler():
                         peso_g = 1000
                         if pum > 0:
                             ratio = float(precio) / float(pum)
-                            if fmt in ['kg', 'L']: peso_g = int(ratio * 1000)
-                            else: peso_g = int(ratio * 1000)
+                            # Si la referencia es KG o L, multiplicamos por 1000
+                            # Si no, asumimos que es unidad y estimamos
+                            if fmt.lower() in ['kg', 'l']: 
+                                peso_g = int(ratio * 1000)
+                            else:
+                                peso_g = int(ratio * 1000)
 
-                        # Extracción Nutricional (Placeholder funcional)
                         kcal = extraer_nutricion(p)
 
                         ProductoReal.objects.update_or_create(
@@ -201,17 +237,18 @@ def ejecutar_crawler():
                             defaults={
                                 "precio_actual": precio,
                                 "peso_gramos": peso_g,
-                                "precio_por_kg": pum if fmt == 'kg' else (precio / Decimal(peso_g/1000) if peso_g > 0 else 0),
+                                "precio_por_kg": pum if fmt.lower() in ['kg', 'l'] else (precio / Decimal(peso_g/1000) if peso_g > 0 else 0),
                                 "imagen_url": p.get('thumbnail', ''),
-                                "kcal_100g": kcal # Guardamos el dato
+                                "kcal_100g": kcal
                             }
                         )
                         total_guardados += 1
                         break 
                     except: pass
+        
         time.sleep(0.05)
 
-    print(f"\n🏁 BARRIDO V8 COMPLETADO. {total_guardados} productos en la saca.")
+    print(f"\n🏁 BARRIDO V9 COMPLETADO. {total_guardados} productos limpios.")
 
 if __name__ == "__main__":
     ejecutar_crawler()

@@ -38,7 +38,7 @@
                                         {% if dia_data.comida.es_apta_tupper %}<span class="badge bg-info text-dark" style="font-size:0.6rem">Tupper</span>{% endif %}
                                     </div>
                                 {% else %}
-                                    <div class="text-muted fst-italic small">Libre / Restos</div>
+                                    <div class="text-muted fst-italic small">Libre</div>
                                 {% endif %}
                             </div>
 
@@ -97,6 +97,7 @@
                                                 <div class="flex-grow-1">
                                                     <div style="font-size: 0.9rem; line-height: 1.1;">
                                                         <strong>{{ item.unidades }}x</strong> {{ item.nombre }}
+                                                        <span class="text-muted small">({{ item.peso_display }})</span>
                                                     </div>
                                                     <div class="text-muted small">{{ item.precio_u }}€/ud</div>
                                                 </div>
