@@ -1,19 +1,135 @@
 import json
+import random
+from datetime import date, timedelta
 from django.shortcuts import render, get_object_or_404, redirect
 from django.contrib.auth.forms import UserCreationForm
 from django.contrib.auth import login
 from django.contrib.auth.decorators import login_required
 from django.db.models import Min, Q
-from .models import Receta, PerfilUsuario, PlanSemanal, Supermercado
+from django.contrib import messages
+from .models import (
+    Receta, PerfilUsuario, PlanSemanal, Supermercado, 
+    ComidaPlanificada, ProductoReal, CostePorSupermercado
+)
 
-# REDIRECCIÓN RAÍZ
+# --- MOTOR TETRIS (Integrado en la Web) ---
+def generar_plan_motor(user):
+    """
+    Ejecuta la lógica del Tetris para un usuario específico y guarda el plan en BD.
+    """
+    try:
+        perfil = user.perfil
+    except:
+        return False, "Usuario sin perfil configurado."
+
+    # 1. Supermercados
+    mis_supers = perfil.supermercados_seleccionados.all()
+    if not mis_supers.exists():
+        mis_supers = Supermercado.objects.all()
+
+    # 2. Limpieza de planes futuros o actuales
+    inicio_semana = date.today() 
+    
+    # Borrar planes anteriores
+    PlanSemanal.objects.filter(usuario=user).delete()
+    
+    plan = PlanSemanal.objects.create(usuario=user, fecha_inicio=inicio_semana)
+    
+    despensa = {} 
+    cesta_compra_real = {}
+    memoria_reciente = [] 
+    coste_total_plan = 0.0
+
+    dias = range(7) 
+    momentos = ['COMIDA', 'CENA']
+
+    # 3. Generación
+    for dia in dias:
+        for momento in momentos:
+            candidatas = Receta.objects.filter(
+                costes_por_supermercado__supermercado__in=mis_supers,
+                costes_por_supermercado__es_posible=True
+            ).annotate(
+                precio_minimo_mio=Min('costes_por_supermercado__coste')
+            ).order_by('precio_minimo_mio')
+
+            # Filtro Anti-Repetición
+            if memoria_reciente:
+                candidatas = candidatas.exclude(titulo__in=memoria_reciente)
+
+            pool = candidatas[:10]
+            if not pool.exists():
+                continue 
+                
+            receta_elegida = random.choice(pool)
+            
+            # Guardar en memoria
+            memoria_reciente.append(receta_elegida.titulo)
+            if len(memoria_reciente) > 4: memoria_reciente.pop(0)
+            
+            coste_plato = receta_elegida.precio_minimo_mio or 0
+            coste_total_plan += float(coste_plato)
+
+            # --- GENERAR LISTA DE COMPRA ---
+            for item in receta_elegida.ingredientes.all():
+                nombre_base = item.ingrediente_base.nombre
+                necesario = item.cantidad_gramos
+                
+                if nombre_base not in despensa: despensa[nombre_base] = 0
+
+                if despensa[nombre_base] < necesario:
+                    prod = ProductoReal.objects.filter(
+                        ingrediente_base=item.ingrediente_base,
+                        supermercado__in=mis_supers
+                    ).order_by('precio_por_kg').first()
+
+                    if prod:
+                        peso_pack = prod.peso_gramos
+                        cantidad_a_comprar = 1
+                        deficit = necesario - despensa[nombre_base]
+                        
+                        while (cantidad_a_comprar * peso_pack) < deficit:
+                            cantidad_a_comprar += 1
+                        
+                        despensa[nombre_base] += (peso_pack * cantidad_a_comprar)
+                        
+                        clave = f"{prod.nombre_comercial}"
+                        if clave not in cesta_compra_real:
+                            cesta_compra_real[clave] = {
+                                'super': prod.supermercado.nombre,
+                                'unidades': 0,
+                                'precio_u': float(prod.precio_actual),
+                                'total': 0.0,
+                                'imagen': prod.imagen_url
+                            }
+                        cesta_compra_real[clave]['unidades'] += cantidad_a_comprar
+                        cesta_compra_real[clave]['total'] += (cantidad_a_comprar * float(prod.precio_actual))
+
+                despensa[nombre_base] -= necesario
+
+            ComidaPlanificada.objects.create(
+                plan=plan, 
+                receta=receta_elegida, 
+                dia_semana=dia, 
+                momento=momento
+            )
+
+    # CORRECCIÓN: Usar 'lista_compra_snapshot'
+    plan.lista_compra_snapshot = json.dumps(cesta_compra_real)
+    plan.coste_total_estimado = coste_total_plan
+    plan.save()
+    
+    return True, "Plan generado correctamente."
+
+
+# --- VISTAS WEB ---
+
 def home(request):
     if request.user.is_authenticated:
         return redirect('plan_semanal')
     else:
         return redirect('login')
 
-# 1. VISTA: LISTA DE RECETAS (Con Precio Dinámico)
 def lista_recetas(request):
     recetas = Receta.objects.all()
     perfil = None
@@ -25,8 +141,6 @@ def lista_recetas(request):
             perfil = PerfilUsuario.objects.get(usuario=request.user)
             mis_supers = perfil.supermercados_seleccionados.all()
 
-            # --- LÓGICA DE PRECIOS V2 ---
-            # Si el usuario tiene supermercados, calculamos el precio mínimo en ELLOS.
             if mis_supers.exists():
                 recetas = recetas.annotate(
                     precio_usuario=Min(
@@ -35,62 +149,38 @@ def lista_recetas(request):
                     )
                 )
             else:
-                # Si no tiene súper seleccionado, mostramos el mínimo global
-                recetas = recetas.annotate(
-                    precio_usuario=Min('costes_por_supermercado__coste')
-                )
+                recetas = recetas.annotate(precio_usuario=Min('costes_por_supermercado__coste'))
 
-            # --- MACROS ---
             metas = {
                 'calorias': perfil.gasto_energetico_diario,
                 'proteinas': perfil.objetivo_proteinas,
                 'grasas': perfil.objetivo_grasas,
                 'hidratos': perfil.objetivo_hidratos,
             }
-
-            # Filtros de Electrodomésticos
-            if not perfil.tiene_horno: recetas = recetas.exclude(es_apta_horno=True)
-            if not perfil.tiene_airfryer: recetas = recetas.exclude(es_apta_airfryer=True)
-            if not perfil.tiene_microondas: recetas = recetas.exclude(es_apta_microondas=True)
-
             if perfil.presupuesto_semanal > 0:
                 limite_coste = perfil.presupuesto_semanal / 14
 
         except PerfilUsuario.DoesNotExist:
             pass
     else:
-        # Usuario anónimo: Precio mínimo global
         recetas = recetas.annotate(precio_usuario=Min('costes_por_supermercado__coste'))
 
-    # Filtros Manuales (Buscador)
     query = request.GET.get('q')
     if query: recetas = recetas.filter(titulo__icontains=query)
-    if request.GET.get('sarten'): recetas = recetas.filter(es_apta_sarten=True)
-    if request.GET.get('airfryer'): recetas = recetas.filter(es_apta_airfryer=True)
+    
     if request.GET.get('horno'): recetas = recetas.filter(es_apta_horno=True)
+    if request.GET.get('sarten'): recetas = recetas.filter(es_apta_sarten=True)
+    if request.GET.get('tupper'): recetas = recetas.filter(es_apta_tupper=True)
 
     return render(request, 'core/lista_recetas.html', {
-        'recetas': recetas, 
-        'perfil': perfil, 
-        'metas': metas, 
-        'limite_coste': limite_coste
+        'recetas': recetas, 'perfil': perfil, 'metas': metas, 'limite_coste': limite_coste
     })
 
-# 2. VISTA: DETALLE DE RECETA
 def detalle_receta(request, receta_id):
     receta = get_object_or_404(Receta, id=receta_id)
-    
-    # Obtener desglose de precios por súper para mostrar comparativa
-    # Solo mostramos los que son "posibles" (tienen todos los ingredientes)
     costes = receta.costes_por_supermercado.filter(es_posible=True).select_related('supermercado').order_by('coste')
-    
-    # NOTA: Asegúrate de que el template se llame 'detalles_receta.html' o ajusta aquí el nombre
-    return render(request, 'core/detalles_receta.html', {
-        'receta': receta,
-        'costes': costes
-    })
+    return render(request, 'core/detalles_receta.html', {'receta': receta, 'costes': costes})
 
-# 3. VISTA: REGISTRO
 def registro(request):
     if request.method == 'POST':
         form = UserCreationForm(request.POST)
@@ -103,10 +193,9 @@ def registro(request):
         form = UserCreationForm()
     return render(request, 'core/registro.html', {'form': form})
 
-# 4. VISTA: PERFIL
 @login_required
 def perfil(request):
-    perfil_usuario, created = PerfilUsuario.objects.get_or_create(usuario=request.user)
+    perfil_usuario, _ = PerfilUsuario.objects.get_or_create(usuario=request.user)
     todos_supers = Supermercado.objects.all()
 
     if request.method == 'POST':
@@ -124,11 +213,14 @@ def perfil(request):
         perfil_usuario.tiene_horno = 'horno' in request.POST
         perfil_usuario.tiene_microondas = 'microondas' in request.POST
         
-        # Guardar Supermercados
         supers_ids = request.POST.getlist('supermercados')
         perfil_usuario.supermercados_seleccionados.set(supers_ids)
         
         perfil_usuario.save()
+        
+        generar_plan_motor(request.user)
+        messages.success(request, "Perfil guardado y Plan regenerado con tus nuevos datos.")
+        
         return redirect('plan_semanal')
 
     return render(request, 'core/perfil.html', {
@@ -136,9 +228,14 @@ def perfil(request):
         'supermercados': todos_supers
     })
 
-# 5. VISTA: VER PLAN SEMANAL
 @login_required
 def ver_plan_semanal(request):
+    if request.method == 'POST':
+        exito, msg = generar_plan_motor(request.user)
+        if exito: messages.success(request, msg)
+        else: messages.error(request, msg)
+        return redirect('plan_semanal')
+
     plan = PlanSemanal.objects.filter(usuario=request.user).order_by('-fecha_inicio').first()
     
     dias_semana = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo']
@@ -153,24 +250,18 @@ def ver_plan_semanal(request):
             elif comida.momento == 'CENA':
                 calendario[comida.dia_semana]['cena'] = comida.receta
         
-        # Procesar JSON de compra para la vista agrupada
-        if plan.lista_compra_generada:
+        # CORRECCIÓN: Usar 'lista_compra_snapshot'
+        if plan.lista_compra_snapshot:
             try:
-                raw_lista = json.loads(plan.lista_compra_generada)
-                # Agrupar por supermercado: { 'Mercadona': [item1, item2], 'Lidl': [...] }
+                raw_lista = json.loads(plan.lista_compra_snapshot)
                 lista_agrupada = {}
                 for nombre_prod, datos in raw_lista.items():
                     super_nombre = datos.get('super', 'Otros')
-                    if super_nombre not in lista_agrupada:
-                        lista_agrupada[super_nombre] = []
-                    
+                    if super_nombre not in lista_agrupada: lista_agrupada[super_nombre] = []
                     datos['nombre'] = nombre_prod
                     lista_agrupada[super_nombre].append(datos)
-                
                 lista_compra_visual = lista_agrupada
-
-            except json.JSONDecodeError:
-                lista_compra_visual = {}
+            except: pass
 
     return render(request, 'core/plan_semanal.html', {
         'calendario': calendario,

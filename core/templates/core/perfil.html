@@ -8,6 +8,7 @@
         .section-card { border: none; box-shadow: 0 4px 10px rgba(0,0,0,0.05); border-radius: 15px; margin-bottom: 20px; }
         .card-header-custom { background: white; border-bottom: 2px solid #e9ecef; font-weight: bold; color: #198754; padding: 15px 20px; border-radius: 15px 15px 0 0 !important; }
         .form-label { font-weight: 600; font-size: 0.9rem; color: #495057; }
+        .super-checkbox:checked + label { background-color: #198754; color: white; border-color: #198754; }
     </style>
 </head>
 <body class="bg-light">
@@ -82,6 +83,31 @@
                         </div>
                     </div>
 
+                    <div class="card section-card border-success">
+                        <div class="card-header-custom text-success">🛒 Tus Supermercados (Logística)</div>
+                        <div class="card-body p-4">
+                            <p class="small text-muted mb-3">Selecciona dónde haces la compra habitualmente. QOME optimizará los precios basándose en esto.</p>
+                            <div class="d-flex gap-2 flex-wrap">
+                                {% for super in supermercados %}
+                                    <div>
+                                        <input type="checkbox" class="btn-check super-checkbox" 
+                                               name="supermercados" id="super_{{ super.id }}" 
+                                               value="{{ super.id }}"
+                                               {% if super in perfil.supermercados_seleccionados.all %}checked{% endif %}>
+                                        <label class="btn btn-outline-secondary d-flex align-items-center gap-2" for="super_{{ super.id }}">
+                                            <span style="width: 10px; height: 10px; border-radius: 50%; background-color: {{ super.color_brand }}; display: inline-block;"></span>
+                                            {{ super.nombre }}
+                                        </label>
+                                    </div>
+                                {% empty %}
+                                    <div class="alert alert-warning w-100">
+                                        ⚠️ No hay supermercados registrados. Ejecuta el scraper primero.
+                                    </div>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    </div>
+
                     <div class="card section-card">
                         <div class="card-header-custom">⏳ Tiempo y Dinero</div>
                         <div class="card-body p-4">
@@ -100,15 +126,13 @@
                                         <input type="number" name="tiempo_diario" class="form-control" value="{{ perfil.tiempo_cocina_diario }}">
                                         <span class="input-group-text">min/día</span>
                                     </div>
-                                    <div class="form-text small">Para cenas rápidas tras el trabajo.</div>
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Tiempo Cocina (Fines de Semana)</label>
                                     <div class="input-group">
-                                        <input type="number" name="tiempo_finde" class="form-control" value="{{ perfil.tiempo_cocina_finde }}">
+                                        <input type="number" name="tiempo_finde" class="form-control" value="{{ perfil.tiempo_cocina_finde|default:60 }}">
                                         <span class="input-group-text">min/día</span>
                                     </div>
-                                    <div class="form-text small">Para Batch Cooking o platos elaborados.</div>
                                 </div>
                             </div>
                         </div>
