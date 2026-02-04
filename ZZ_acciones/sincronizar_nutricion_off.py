@@ -11,9 +11,14 @@ django.setup()
 
 from core.models import IngredienteBase, Receta
 
+# Cabecera para ser "educados" con la API
+HEADERS_OFF = {
+    'User-Agent': 'QomeDemo/1.0 (Student Project; +http://localhost)'
+}
+
 def obtener_datos_off(nombre_ingrediente):
     """
-    Consulta la API de Open Food Facts para obtener macros promedio de un producto.
+    Consulta la API de Open Food Facts con sistema de REINTENTOS.
     """
     url = "https://es.openfoodfacts.org/cgi/search.pl"
     params = {
@@ -21,42 +26,52 @@ def obtener_datos_off(nombre_ingrediente):
         'search_simple': 1,
         'action': 'process',
         'json': 1,
-        'page_size': 3, # Traemos 3 para filtrar anomalías si fuera necesario
-        'fields': 'product_name,nutriments' # Optimizamos la respuesta
+        'page_size': 3, 
+        'fields': 'product_name,nutriments' 
     }
     
-    try:
-        r = requests.get(url, params=params, timeout=10)
-        data = r.json()
-        
-        if 'products' in data and len(data['products']) > 0:
-            # Cogemos el primer resultado relevante
-            # En un sistema real, haríamos una media de los 5 primeros, pero para demo vale el 1º
-            producto = data['products'][0]
-            nutris = producto.get('nutriments', {})
+    # SISTEMA DE REINTENTOS (3 intentos max)
+    max_intentos = 3
+    for intento in range(1, max_intentos + 1):
+        try:
+            # Aumentamos timeout a 20s
+            r = requests.get(url, params=params, headers=HEADERS_OFF, timeout=20)
             
-            return {
-                'kcal': int(nutris.get('energy-kcal_100g', 0) or 0),
-                'prot': float(nutris.get('proteins_100g', 0) or 0),
-                'gras': float(nutris.get('fat_100g', 0) or 0),
-                'hidr': float(nutris.get('carbohydrates_100g', 0) or 0)
-            }
-    except Exception as e:
-        print(f"   ❌ Error conectando con OFF para '{nombre_ingrediente}': {e}")
+            if r.status_code == 200:
+                data = r.json()
+                if 'products' in data and len(data['products']) > 0:
+                    producto = data['products'][0]
+                    nutris = producto.get('nutriments', {})
+                    return {
+                        'kcal': int(nutris.get('energy-kcal_100g', 0) or 0),
+                        'prot': float(nutris.get('proteins_100g', 0) or 0),
+                        'gras': float(nutris.get('fat_100g', 0) or 0),
+                        'hidr': float(nutris.get('carbohydrates_100g', 0) or 0)
+                    }
+                return None # Si responde 200 pero no hay productos, no es error de red
+                
+        except Exception as e:
+            # Si es el último intento, imprimimos error
+            if intento == max_intentos:
+                print(f"      ❌ Error persistente: {e}")
+            else:
+                # Si falló pero quedan intentos, esperamos un poco
+                print(f"      ⚠️ Timeout. Reintentando ({intento}/{max_intentos})...", end="\r")
+                time.sleep(2) # Espera 2 segundos antes de reintentar
     
     return None
 
 def sincronizar():
-    print("🌍 CONECTANDO CON OPEN FOOD FACTS (Fuente de Verdad Nutricional)...")
+    print("🌍 CONECTANDO CON OPEN FOOD FACTS (Modo Robusto)...")
     
     ingredientes = IngredienteBase.objects.all()
     total = ingredientes.count()
     actualizados = 0
     
     for i, ing in enumerate(ingredientes):
-        print(f"   📡 Consultando [{i+1}/{total}]: {ing.nombre}...", end=" ")
+        print(f"   📡 [{i+1}/{total}] {ing.nombre}...", end=" ")
         
-        # Pequeña limpieza para mejorar la búsqueda en OFF
+        # Limpieza nombre
         query = ing.nombre.replace("Bote", "").replace("Lata", "").replace("Fresco", "").strip()
         
         macros = obtener_datos_off(query)
@@ -70,10 +85,10 @@ def sincronizar():
             print(f"✅ OK ({macros['kcal']} kcal)")
             actualizados += 1
         else:
-            print("⚠️ Sin datos (Se mantiene a 0)")
+            print("⚠️ Sin datos (0 kcal)")
         
-        # Respetamos la API de OFF (Rate Limiting ético)
-        time.sleep(0.5)
+        # Pausa entre ingredientes distintos para no saturar
+        time.sleep(1.0)
 
     print(f"\n📊 Sincronización finalizada. {actualizados}/{total} ingredientes actualizados.")
     
